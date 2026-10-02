@@ -1,0 +1,25 @@
+# Copy to terraform.tfvars. No AMI ids belong here.
+region      = "us-east-1"
+name_prefix = "firmware-dump"
+purpose_tag = "firmware-dump"
+
+# Leave vpc_id empty to create a dedicated VPC. This stack never touches a
+# default VPC and never selects one for you.
+# vpc_id     = "vpc-0123456789abcdef0"
+# subnet_ids = ["subnet-0123456789abcdef0"]
+
+vpc_cidr     = "10.67.0.0/16"
+subnet_count = 2
+
+# Ephemeral helper (default). scripts/dump.sh launches and reuses one per slot.
+helper_enabled        = false
+helper_instance_type  = "t3.medium"
+helper_root_volume_gb = 30
+associate_public_ip   = true
+
+staging_retention_days = 30
+
+tags = {
+  Owner = "security-research"
+  Cost  = "hourly-only"
+}

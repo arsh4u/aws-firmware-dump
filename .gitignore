@@ -1,0 +1,24 @@
+# Terraform
+__pycache__/
+*.py[cod]
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/terraform.tfvars
+terraform/crash.log
+terraform/crash.*.log
+
+# Generated runtime state
+.env
+.azs
+.run/
+manifest.json
+manifest.json.lock
+manifest.*.json
+manifest.*.json.lock
+
+# Downloaded images are large; the record is manifest.json, the bytes stay out of git
+artifacts/
+*.raw
+*.raw.zst
