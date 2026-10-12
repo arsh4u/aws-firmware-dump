@@ -5,12 +5,14 @@
 # direct APIs, so it only needs zstd, jq, and python3+boto3.
 set -euxo pipefail
 
-dnf install -y zstd jq amazon-ssm-agent python3 python3-pip || true
-
-# boto3 into a dedicated venv; AL2023's system python is externally managed.
-python3 -m venv /opt/fw-dump || true
-/opt/fw-dump/bin/pip install --quiet --upgrade pip boto3 || \
-  pip3 install --quiet --break-system-packages boto3 || true
+# Same lock as snapshot_to_s3.sh. SSM can start that script while this is
+# still in dnf; a second transaction corrupts the package cache.
+flock /var/run/fw-dnf.lock bash -c '
+  set -e
+  dnf install -y zstd jq amazon-ssm-agent python3 python3-pip
+  python3 -m venv /opt/fw-dump
+  /opt/fw-dump/bin/pip install --quiet --upgrade pip boto3
+' || true
 
 systemctl enable --now amazon-ssm-agent || true
 systemctl restart amazon-ssm-agent || true

@@ -54,7 +54,10 @@ export AWS_DEFAULT_REGION="$REGION"
 echo "region: $REGION"
 
 BUCKET="${URI#s3://}"; BUCKET="${BUCKET%%/*}"
-PREFIX="${URI%.raw.zst}"
+# Key, not the s3:// URI. Uploads are s3://${BUCKET}/${key}; a URI here
+# stores the sidecars under a doubled "s3://bucket/s3://bucket/..." key.
+KEY="${URI#s3://${BUCKET}/}"
+PREFIX="${KEY%.raw.zst}"
 STATUS_KEY="_status/${LABEL}.json"
 LOG_KEY="_logs/${LABEL}.log"
 SHA_KEY="${PREFIX}.raw.zst.sha256"
@@ -83,28 +86,38 @@ echo "=== snapshot_to_s3: label=$LABEL snapshot=$SNAPSHOT uri=$URI"
 
 status running
 
-PY=""
-for cand in /opt/fw-dump/bin/python3 python3; do
-  if command -v "$cand" >/dev/null 2>&1 && "$cand" -c 'import boto3' >/dev/null 2>&1; then
-    PY="$cand"; break
-  fi
-done
-if [ -z "$PY" ]; then
-  echo "no python3 with boto3 found; attempting install"
-  dnf install -y python3-pip zstd jq || true
-  python3 -m venv /opt/fw-dump 2>/dev/null || true
-  /opt/fw-dump/bin/pip install --quiet --upgrade boto3 2>/dev/null \
-    || pip3 install --quiet --break-system-packages boto3 2>/dev/null || true
+have_boto3() {
+  local cand
+  PY=""
   for cand in /opt/fw-dump/bin/python3 python3; do
     if command -v "$cand" >/dev/null 2>&1 && "$cand" -c 'import boto3' >/dev/null 2>&1; then
-      PY="$cand"; break
+      PY="$cand"
+      return 0
     fi
   done
-fi
-[ -n "$PY" ] || { echo "could not obtain python3 with boto3"; exit 4; }
-echo "interpreter: $PY"
+  return 1
+}
 
-command -v zstd >/dev/null 2>&1 || dnf install -y zstd
+# SSM is Online before user-data finishes. Both installers take this lock so
+# two dnf transactions cannot share one cache and delete each other's rpms.
+install_tools() {
+  local i
+  for i in $(seq 1 30); do
+    have_boto3 && command -v zstd >/dev/null 2>&1 && return 0
+    echo "tools not ready (attempt $i); waiting on package install"
+    flock /var/run/fw-dnf.lock bash -c '
+      set -e
+      dnf install -y python3 python3-pip zstd jq
+      python3 -m venv /opt/fw-dump
+      /opt/fw-dump/bin/pip install --quiet --upgrade boto3
+    ' || true
+    sleep 10
+  done
+  have_boto3 && command -v zstd >/dev/null 2>&1
+}
+
+install_tools || { echo "could not obtain python3 with boto3 and zstd"; exit 4; }
+echo "interpreter: $PY"
 
 rm -f /tmp/fw_fifo
 mkfifo /tmp/fw_fifo
@@ -127,8 +140,8 @@ SHA=$(cat /tmp/fw_sha256)
 echo "sha256(compressed stream) = $SHA"
 
 printf '%s  %s\n' "$SHA" "$(basename "$URI")" > /tmp/fw_sha256.side
-aws s3 cp /tmp/fw_sha256.side "s3://${BUCKET}/${SHA_KEY}" --only-show-errors || true
-aws s3 cp /tmp/fw_stats.json "s3://${BUCKET}/${STATS_KEY}" --only-show-errors || true
+aws s3 cp /tmp/fw_sha256.side "s3://${BUCKET}/${SHA_KEY}" --only-show-errors
+aws s3 cp /tmp/fw_stats.json "s3://${BUCKET}/${STATS_KEY}" --only-show-errors
 
 VB=$(grep -o '"volume_bytes": *[0-9]*' /tmp/fw_stats.json | grep -o '[0-9]*' || echo 0)
 AB=$(grep -o '"allocated_bytes": *[0-9]*' /tmp/fw_stats.json | grep -o '[0-9]*' || echo 0)

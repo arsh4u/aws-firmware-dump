@@ -551,6 +551,10 @@ fetch_one() {
     volume_bytes=$(jq -r '.volume_bytes // 0' <<<"$status")
     alloc_bytes=$(jq -r '.allocated_bytes // 0' <<<"$status")
     obj_size=$(aws s3api head-object --bucket "$DUMP_BUCKET" --key "$dkey" --query 'ContentLength' --output text)
+    aws s3api head-object --bucket "$DUMP_BUCKET" --key "${dkey}.sha256" >/dev/null \
+      || die "checksum sidecar missing: s3://$DUMP_BUCKET/${dkey}.sha256"
+    aws s3api head-object --bucket "$DUMP_BUCKET" --key "${dkey%.raw.zst}.stats.json" >/dev/null \
+      || die "stats sidecar missing: s3://$DUMP_BUCKET/${dkey%.raw.zst}.stats.json"
 
     disk_obj=$(jq -n --arg dev "$dname" --arg snap "$snap" --arg key "$dkey" \
       --arg sha "$remote_sha" --argjson cbytes "$obj_size" \
